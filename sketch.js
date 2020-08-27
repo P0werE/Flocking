@@ -5,17 +5,17 @@ const ENTITY_MAX_VELOCITY = 10
 const ORIGIN_VECTOR = new p5.Vector(1, 0);
 const AMOUNT = 250
 const PADDING = 10
-const BACKGROUND_COLOR = [0]
+const BACKGROUND_COLOR = [10,10,51]
 const FPS = 60
 
 
-const TREE_CAP = 10;
-const TREE_DEBUG = false
+const TREE_CAP = 20;
+const TREE_DEBUG = true
 const SHOW_TEXT = false
 
 
-const ENTITY_PERSONAL_SPACE = ENTITY_SIZE 
-const ENTITY_DETECTION_RANGE = 20
+const ENTITY_PERSONAL_SPACE = ENTITY_SIZE * 3
+const ENTITY_DETECTION_RANGE = 60
 
 
 //------------------------------------------------------------------------------
