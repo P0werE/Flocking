@@ -1,21 +1,24 @@
 "use strict"
-const ENTITY_SIZE = 10
-const ENTITY_MAX_VELOCITY = 10
+const ENTITY_SIZE = 20
+const ENTITY_MAX_VELOCITY = 5
 
 const ORIGIN_VECTOR = new p5.Vector(1, 0);
-const AMOUNT = 250
+const AMOUNT = 150
 const PADDING = 10
-const BACKGROUND_COLOR = [10,10,51]
+const BACKGROUND_COLOR = [10, 10, 51]
 const FPS = 60
 
+const ZOOM = 1.5
 
-const TREE_CAP = 20;
-const TREE_DEBUG = true
+
+const TREE_CAP = AMOUNT / 10;
+const TREE_DEBUG = false
 const SHOW_TEXT = false
+const SHOW_COUNT = true
+const SHOW_ORIENTATION = false
 
-
-const ENTITY_PERSONAL_SPACE = ENTITY_SIZE * 3
-const ENTITY_DETECTION_RANGE = 60
+const ENTITY_PERSONAL_SPACE = ENTITY_SIZE
+const ENTITY_DETECTION_RANGE = 75
 
 
 //------------------------------------------------------------------------------
@@ -24,17 +27,20 @@ const ENTITY_DETECTION_RANGE = 60
 let entities = undefined;
 let tree = undefined
 
-function windowResized(){
-  resizeCanvas(windowWidth - PADDING, windowHeight - PADDING)
+function windowResized() {
+  noLoop()
+  resizeCanvas((windowWidth - PADDING) / ZOOM,( windowHeight - PADDING)/ ZOOM)
+  tree.renew()
+  loop()
 }
 
 function setup() {
   background(...BACKGROUND_COLOR);
-  createCanvas(windowWidth - PADDING ,windowHeight - PADDING);
+  createCanvas((windowWidth - PADDING)/ ZOOM, (windowHeight - PADDING)/ ZOOM);
   tree = new TreeHandler()
   entities = generateEntities(tree, AMOUNT)
   frameRate(FPS);
-  document.querySelector("body").style.padding = PADDING /2
+  document.querySelector("body").style.padding = PADDING / 2
   document.querySelector("body").style.background = `rgb(${BACKGROUND_COLOR[0]}, ${BACKGROUND_COLOR[0]}, ${BACKGROUND_COLOR[0]})`
 }
 
@@ -43,10 +49,10 @@ function draw() {
   tree.reClamp()
   tree.update()
   tree.show()
-  
+
   noStroke()
-  fill(0,255,0)
-  text(round(frameRate()), width  - 20, height-10);
+  fill(0, 255, 0)
+  text(round(frameRate()), width - 20, height - 10);
 }
 
 
@@ -101,8 +107,6 @@ class Entity {
   constructor(color, size, posX, posY) {
     this.maxSpeed = ENTITY_MAX_VELOCITY
     this.maxForce = .5;
-
-
     this.position = new p5.Vector(posX, posY)
     this.size = sqrt(size * 2 / 3);
     this.color = color;
@@ -125,12 +129,12 @@ class Entity {
     stroke(this.color)
     let cpyy = this.velocity.copy()
     cpyy.add(this.position)
-    line(cpyy.x, cpyy.y, (cpyy.x + this.acceleration.x) , (cpyy.y + this.acceleration.y) )
+    line(cpyy.x, cpyy.y, (cpyy.x + this.acceleration.x), (cpyy.y + this.acceleration.y))
     strokeWeight(1)
     this.acceleration.mult(0);
   }
 
-  flock(boids){
+  flock(boids) {
     let alignment = this.align(boids);
     let cohesion = this.cohesion(boids);
     let separation = this.separation(boids);
@@ -139,7 +143,7 @@ class Entity {
     this.acceleration.add(cohesion);
     this.acceleration.add(separation);
   }
-  
+
   align(boids) {
     let steering = createVector();
     let total = 0;
@@ -148,7 +152,7 @@ class Entity {
         this.position.x,
         this.position.y],
         [other.position.x,
-        other.position.y], 
+        other.position.y],
         ENTITY_DETECTION_RANGE
       );
       if (other != this && d < ENTITY_DETECTION_RANGE
@@ -163,9 +167,10 @@ class Entity {
       steering.sub(this.velocity);
       steering.limit(this.maxForce);
     }
-    return steering;}
+    return steering;
+  }
 
-  cohesion(boids){
+  cohesion(boids) {
     let steering = createVector();
     let total = 0;
     for (let other of boids) {
@@ -173,7 +178,7 @@ class Entity {
         this.position.x,
         this.position.y],
         [other.position.x,
-        other.position.y], 
+        other.position.y],
         ENTITY_DETECTION_RANGE
       );
       if (other != this && d < ENTITY_DETECTION_RANGE
@@ -192,7 +197,7 @@ class Entity {
     return steering;
   }
 
-  separation(boids){
+  separation(boids) {
     let steering = createVector();
     let total = 0;
     for (let other of boids) {
@@ -200,7 +205,7 @@ class Entity {
         this.position.x,
         this.position.y],
         [other.position.x,
-        other.position.y], 
+        other.position.y],
         ENTITY_DETECTION_RANGE
       );
       if (other != this && d < ENTITY_DETECTION_RANGE) {
@@ -225,15 +230,15 @@ class Entity {
   }
 
   setPos(x, y) {
-    this.position.set(x,y)
+    this.position.set(x, y)
   }
-  
+
   setVector(newVector) {
     this.direction = newVector
   }
 
   addVector(newX, newY) {
-    this.direction.add(newX, newY) 
+    this.direction.add(newX, newY)
   }
 
   addVectorAngle(x) {
@@ -261,7 +266,7 @@ class Tree {
   getBoundaries() { }
   getValue() { }
   size() { }
-  executeOnLeaf(){}
+  executeOnLeaf() { }
 }
 
 class Leaf extends Tree {
@@ -307,220 +312,249 @@ class Node extends Tree {
     this.split = false;
     this.title = "root";
     this.depth = 0;
+    this.leafes = new Set();
   }
 
   executeOnLeaf(func) {
-    this.branches.forEach(e => e.executeOnLeaf(func))
+    if (this.split) {
+      this.branches.forEach(e => e.executeOnLeaf(func))
+    } else {
+      this.leafes.forEach(e => e.executeOnLeaf(func))
+    }
   }
 
-  reClampTree(){
-    if(this.split) {
-      let newBranches = []
-      if(this.size() <= TREE_CAP) {
+  reClampTree() {
+    if (this.split) {
+      let newLeafes = new Set()
+      if (this.size() <= TREE_CAP) {
         this.branches.forEach(e => {
           let subtree = e.getSubTree()
-          subtree.forEach(x => newBranches.push(...x.branches))
+          subtree.forEach(x => {
+            x.leafes.forEach(element => {
+            this.leafes.add(element)
+          })
         })
-        this.branches = newBranches
-        this.split = false
-      } else {
-        this.branches.forEach(e => {
-          e.reClampTree()
-        })
-      }
-    }
-  }
-
-
-  update(root){
-    if(this.split) {
-      this.branches.forEach(e => e.update(root))
-    } else {
-      let newBranches = []
-      this.branches.forEach((val) => {
-        val.executeOnLeaf((e)=> {
-          let entis = root.getNeighbouredBoids(e.position.x, e.position.y, ENTITY_DETECTION_RANGE)
-          e.flock(entis)
-          e.update()
-        })
-        
-        let afterX, afterY
-        [afterX, afterY] = val.coordinates()
-        if(!this.inBoundary(afterX, afterY)) {
-          this.reDeploy(val)
-        }else {
-          newBranches.push(val)
-        }
       })
-      this.branches = newBranches
+      this.branches = []
+      this.split = false
+    } else {
+      this.branches.forEach(e => {
+        e.reClampTree()
+      })
     }
   }
-
-  reDeploy(leaf) {
-    leaf.reParent(undefined)
-    let x,y
-    [x, y] = leaf.coordinates()
-    
-    let p = this
-    while(!p.inBoundary(x,y)) {
-      p = p.parent
-    }
-    p.add(leaf)
-  }
+}
 
 
-  show() {
-    if (TREE_DEBUG) {
-      let c = color(0, 255, 0, 75)
-      fill(255, 75)
-      noStroke()
-      let textt = `${this.title} ${this.size()}`
+update(root){
+  if (this.split) {
+    this.branches.forEach(e => e.update(root))
+  } else {
+    this.leafes.forEach((val) => {
+      val.executeOnLeaf((e) => {
+        let entis = root.getNeighbouredBoids(e.position.x, e.position.y, ENTITY_DETECTION_RANGE)
+        e.flock(entis)
+        e.update()
+      })
 
-      if (SHOW_TEXT) {
-        text(textt, this.x0 + (this.x1 - this.x0) / 2 - (textt.length) / 2, this.y0 + (this.y1 - this.y0) / 2);
+      let afterX, afterY
+      [afterX, afterY] = val.coordinates()
+      if (!this.inBoundary(afterX, afterY)) {
+        this.leafes.delete(val)
+        this.reDeploy(val)
       }
-      fill(0, 0, 0, 0)
-      stroke(c)
-      strokeWeight(1)
-      rect(this.x0, this.y0, this.x1 - this.x0, this.y1 - this.y0)
+    })
+  }
+}
+
+reDeploy(leaf) {
+  let x, y
+  [x, y] = leaf.coordinates()
+  let p = this
+  while (!p.inBoundary(x, y)) {
+    p = p.parent
+  }
+  p.add(leaf)
+}
+
+
+show() {
+  if (TREE_DEBUG) {
+    let c = color(0, 255, 0, 75)
+    fill(255, 75)
+    noStroke()
+    let textt = ""
+    if (SHOW_ORIENTATION) {
+      textt = `${this.title}`
     }
+    if (SHOW_COUNT && SHOW_ORIENTATION) {
+      textt += " "
+    }
+    if (SHOW_COUNT) {
+      textt += ` ${this.size()}`
+    }
+
+    if (SHOW_TEXT) {
+      text(textt, this.x0 + (this.x1 - this.x0) / 2 - (textt.length) / 2, this.y0 + (this.y1 - this.y0) / 2);
+    }
+
+    fill(0, 0, 0, 0)
+    stroke(c)
+    strokeWeight(1)
+    rect(this.x0, this.y0, this.x1 - this.x0, this.y1 - this.y0)
+  }
+  if (this.split) {
     for (let i of this.branches) {
       i.show();
     }
+  } else {
+    this.leafes.forEach(e => e.show())
   }
-
-
-  getLeafes(){
-    let leafes = new Set()
-    if(this.split) {
-      this.branches.forEach(e => {
-        this.add(...e.getLeafes())
-      })
-      return leafes
-    } else {
-      this.branches.forEach(e => leafes.add(e))
-      return leafes
+}
+getLeafes(){
+  let leafes = new Set()
+  if (this.split) {
+    this.branches.forEach(e => {
+      this.add(...e.getLeafes())
+    })
+    return leafes
+  } else {
+    this.leafes.forEach(e => leafes.add(e))
+    if (this.leafes.has(undefined)) {
+      print("LEAFES:", this.leafes)
     }
+    return leafes
   }
+}
 
-  getSubTree() {
-    if (this.split) {
-      let sub = []
-      this.branches.forEach(ele => {
-        sub.push(...ele.getSubTree())
-      })
-      return sub
-    } else {
-      return [this]
-    }
+getSubTree() {
+  if(this.split) {
+    let sub = []
+    this.branches.forEach(ele => {
+
+      sub.push(...ele.getSubTree())
+    })
+    return sub
+  } else {
+    return [this]
   }
+}
 
-  highlight() {
-    if (!this.split) {
-      LAST.add(this)
-      fill(255, 50)
-      noStroke();
-      rect(this.x0, this.y0, this.x1 - this.x0, this.y1 - this.y0)
-    }
+highlight() {
+  if (!this.split) {
+    LAST.add(this)
+    fill(255, 50)
+    noStroke();
+    rect(this.x0, this.y0, this.x1 - this.x0, this.y1 - this.y0)
   }
+}
 
-  get(x, y) {
-    if (this.split) {
-      let curr = undefined
-      this.branches.forEach(val => {
-        if (val.inBoundary(x, y)) {
-          curr = val
-        }
-      })
-      return curr.get(x, y)
-    } else {
-      return this;
-    }
+get(x, y) {
+  if (this.split) {
+    let curr = undefined
+    this.branches.forEach(val => {
+      if (val.inBoundary(x, y)) {
+        curr = val
+      }
+    })
+    return curr.get(x, y)
+  } else {
+    return this;
   }
+}
 
-  getNeighbours() {
-
-  }
-
-  size() {
+size() {
+  if (this.split) {
     let count = 0
     this.branches.forEach((val) => {
       count += val.size()
     })
     return count
+  } else {
+    return this.leafes.size
   }
+}
 
-  getBoundary() {
-    return [this.x0, this.y0, this.x1, this.y1]
+getBoundary() {
+  return [this.x0, this.y0, this.x1, this.y1]
+}
+
+inBoundary(x, y) {
+  let x0, y0, x1, y1
+  [x0, y0, x1, y1] = this.getBoundary()
+  return (x0 < x && y0 < y && x1 >= x && y1 >= y)
+}
+
+getSector(sector) {
+  if (this.split) {
+    return this.branches[sector]
   }
+}
 
-  inBoundary(x, y) {
-    let x0, y0, x1, y1
-    [x0, y0, x1, y1] = this.getBoundary()
-    return (x0 < x && y0 < y && x1 >= x && y1 >= y)
-  }
-
-  getSector(sector) {
-    if (this.split) {
-      return this.branches[sector]
-    }
-  }
-
-  add(e) {
-    if (this.split) {
-      this.branches.forEach(ele => {
-        if (ele.inBoundary(...e.coordinates())) {
-          ele.add(e)
+add(e) {
+  if (this.split) {
+    this.branches.forEach(ele => {
+      if (ele.inBoundary(...e.coordinates())) {
+        if (e == undefined) {
+          print("EEE: ", undefined)
         }
-      })
-    } else {
-      if ((this.branches.length + 1) <= TREE_CAP) {
-        e.reParent(this)
-        this.branches.push(e);
-      } else {
-        let newBranches = []
-        let segmentX = (this.x1 - this.x0) / 2
-        let segmentY = (this.y1 - this.y0) / 2
-        let p0_ = this.x0
-        let p1_ = this.x0 + segmentX
-        let p2_ = this.x0 + segmentX * 2
-        let p_0 = this.y0
-        let p_1 = this.y0 + segmentY
-        let p_2 = this.y0 + segmentY * 2
-
-        let upperLeftt = new Node(p0_, p_0, p1_, p_1, this);
-        upperLeftt.title = "upperLeftt"
-        upperLeftt.depth = this.depth + 1
-        let upperRight = new Node(p1_, p_0, p2_, p_1, this);
-        upperRight.title = "upperRight"
-        upperRight.depth = this.depth + 1
-        let lowerLeftt = new Node(p0_, p_1, p1_, p_2, this);
-        lowerLeftt.title = "lowerLeftt"
-        lowerLeftt.depth = this.depth + 1
-        let lowerRight = new Node(p1_, p_1, p2_, p_2, this);
-        lowerRight.title = "lowerRight"
-        lowerRight.depth = this.depth + 1
-
-        newBranches.push(upperLeftt)
-        newBranches.push(upperRight)
-        newBranches.push(lowerLeftt)
-        newBranches.push(lowerRight)
-
-        this.branches.forEach(leaf => {
-          newBranches.forEach((branch) => {
-            if (branch.inBoundary(...leaf.coordinates())) {
-              leaf.reParent(branch)
-              branch.add(leaf)
-            }
-          })
-        })
-        this.split = true
-        this.branches = newBranches
-        this.add(e)
-
+        ele.add(e)
       }
+    })
+  } else {
+    if ((this.leafes.size + 1) <= TREE_CAP) {
+      if (e == undefined) {
+        print("EEE: ", undefined)
+      }
+      e.reParent(this)
+      this.leafes.add(e);
+    } else {
+      let newBranches = []
+      let segmentX = (this.x1 - this.x0) / 2
+      let segmentY = (this.y1 - this.y0) / 2
+      let p0_ = this.x0
+      let p1_ = this.x0 + segmentX
+      let p2_ = this.x0 + segmentX * 2
+      let p_0 = this.y0
+      let p_1 = this.y0 + segmentY
+      let p_2 = this.y0 + segmentY * 2
+
+      let upperLeftt = new Node(p0_, p_0, p1_, p_1, this);
+      upperLeftt.title = "upperLeftt"
+      upperLeftt.depth = this.depth + 1
+      let upperRight = new Node(p1_, p_0, p2_, p_1, this);
+      upperRight.title = "upperRight"
+      upperRight.depth = this.depth + 1
+      let lowerLeftt = new Node(p0_, p_1, p1_, p_2, this);
+      lowerLeftt.title = "lowerLeftt"
+      lowerLeftt.depth = this.depth + 1
+      let lowerRight = new Node(p1_, p_1, p2_, p_2, this);
+      lowerRight.title = "lowerRight"
+      lowerRight.depth = this.depth + 1
+
+      newBranches.push(upperLeftt)
+      newBranches.push(upperRight)
+      newBranches.push(lowerLeftt)
+      newBranches.push(lowerRight)
+
+      this.leafes.forEach(leaf => {
+        newBranches.forEach((branch) => {
+          if (branch.inBoundary(...leaf.coordinates())) {
+            leaf.reParent(branch)
+            branch.add(leaf)
+            this.leafes.delete(leaf)
+          }
+        })
+      })
+      this.split = true
+      this.branches = newBranches
+      if (e == undefined) {
+        print("EEE: ", undefined)
+      }
+      this.add(e)
     }
   }
+}
 }
 
 
@@ -558,22 +592,25 @@ class TreeHandler {
   execute(func) {
     this.head.executeOnLeaf(func)
   }
-  
+
   update() {
     this.head.update(this)
   }
 
-  reClamp(){
+  reClamp() {
     this.head.reClampTree()
   }
 
 
-  getNeighbouredBoids(x, y ,radius) {
+  getNeighbouredBoids(x, y, radius) {
     let c = tree.getTree()
     let neighbours = new Set()
     c.forEach(e => {
       if (inDistance([x, y], radius, e)) {
-        e.getLeafes().forEach(element => {
+        e.getLeafes().forEach((element, i, list) => {
+          if (list.has(undefined)) {
+            print(list)
+          }
           neighbours.add(element.getValue())
         })
       }
@@ -582,10 +619,7 @@ class TreeHandler {
   }
 
 
-
-
-  
-  renew(){
+  renew() {
     let newSet = this.head.getLeafes()
     this.head = new Node(0, 0, width, height, undefined);
     newSet.forEach(e => {
@@ -626,36 +660,36 @@ function inDistance(coords, radius, branch) {
   let minDistance = dist(branchX, branchY, ...coords)
   let dots = []
   let x, y
-  [x,y] = coords
-  if((x - radius) < 0) {
-    if((y - radius) < 0) {
+  [x, y] = coords
+  if ((x - radius) < 0) {
+    if ((y - radius) < 0) {
       dots.push([x + width, y + height])
-    } 
-    if ((y + radius)  > height) {
+    }
+    if ((y + radius) > height) {
       dots.push([x + width, y - height])
     }
-  } 
- if((x + radius)  > width) {
-    if((y - radius) < 0) {
+  }
+  if ((x + radius) > width) {
+    if ((y - radius) < 0) {
       dots.push([x - width, y + height])
-    } 
-    if ((y + radius) >  height) {
+    }
+    if ((y + radius) > height) {
       dots.push([x - width, y - height])
     }
   }
-  if(0 < x && x < width) {
-    if((y - radius) < 0) {
+  if (0 < x && x < width) {
+    if ((y - radius) < 0) {
       dots.push([x, y + height])
-    } 
-    if ((y + radius) >  height) {
+    }
+    if ((y + radius) > height) {
       dots.push([x, y - height])
     }
   }
-  if(0 < y && y < height) {
-    if((x - radius) < 0) {
+  if (0 < y && y < height) {
+    if ((x - radius) < 0) {
       dots.push([x + width, y])
-    } 
-    if ((x + radius)  > width) {
+    }
+    if ((x + radius) > width) {
       dots.push([x - width, y])
     }
   }
@@ -666,42 +700,43 @@ function inDistance(coords, radius, branch) {
 }
 
 
-function distanceBoids(coords, other, radius){
+function distanceBoids(coords, other, radius) {
+  // return dist(...coords, ...other)
   let otherX, otherY
   [otherX, otherY] = other
   let minDistance = dist(otherX, otherY, ...coords)
   let dots = []
   let x, y
-  [x,y] = coords
-  if((x - radius) < 0) {
-    if((y - radius) < 0) {
+  [x, y] = coords
+  if ((x - radius) < 0) {
+    if ((y - radius) < 0) {
       dots.push([x + width, y + height])
-    } 
-    if ((y + radius)  > height) {
+    }
+    if ((y + radius) > height) {
       dots.push([x + width, y - height])
     }
-  } 
- if((x + radius)  > width) {
-    if((y - radius) < 0) {
+  }
+  if ((x + radius) > width) {
+    if ((y - radius) < 0) {
       dots.push([x - width, y + height])
-    } 
-    if ((y + radius) >  height) {
+    }
+    if ((y + radius) > height) {
       dots.push([x - width, y - height])
     }
   }
-  if(0 < x && x < width) {
-    if((y - radius) < 0) {
+  if (0 < x && x < width) {
+    if ((y - radius) < 0) {
       dots.push([x, y + height])
-    } 
-    if ((y + radius) >  height) {
+    }
+    if ((y + radius) > height) {
       dots.push([x, y - height])
     }
   }
-  if(0 < y && y < height) {
-    if((x - radius) < 0) {
+  if (0 < y && y < height) {
+    if ((x - radius) < 0) {
       dots.push([x + width, y])
-    } 
-    if ((x + radius)  > width) {
+    }
+    if ((x + radius) > width) {
       dots.push([x - width, y])
     }
   }
@@ -724,7 +759,7 @@ function keyPressed() {
       stopped = false
       loop()
     }
-  } else if(key == "d") {
+  } else if (key == "d") {
     draw()
   }
 
@@ -732,7 +767,7 @@ function keyPressed() {
 
 let fullScrn = false
 function mouseClicked() {
-  if (TREE_DEBUG &&  0 <= mouseX && mouseX <= width && 0 <= mouseY && mouseY <= height) {
+  if (TREE_DEBUG && 0 <= mouseX && mouseX <= width && 0 <= mouseY && mouseY <= height) {
     draw()
     let c = tree.getTree()
     let radius = 50
@@ -751,8 +786,8 @@ function mouseClicked() {
       }
     })
   } else {
-    fullScrn = !fullScrn
-    fullscreen(fullScrn)
+    // fullScrn = !fullScrn
+    // fullscreen(fullScrn)
   }
 }
 
