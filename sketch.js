@@ -11,11 +11,13 @@ const FPS = 60
 const ZOOM = 1.5
 
 
-const TREE_CAP = AMOUNT / 10;
-const TREE_DEBUG = false
-const SHOW_TEXT = false
-const SHOW_COUNT = true
-const SHOW_ORIENTATION = false
+const TREE_CAP = AMOUNT / 20;
+
+
+let TREE_DEBUG = false
+let SHOW_TEXT_DEBUG = false
+let SHOW_COUNT_DEBUG = false
+let SHOW_ORIENTATION_DEBUG = false
 
 const ENTITY_PERSONAL_SPACE = ENTITY_SIZE
 const ENTITY_DETECTION_RANGE = 75
@@ -40,6 +42,13 @@ function setup() {
   tree = new TreeHandler()
   entities = generateEntities(tree, AMOUNT)
   frameRate(FPS);
+
+  TREE_DEBUG = createCheckbox('DEBUG Tree', false);
+  SHOW_TEXT_DEBUG = createCheckbox('DEBUG SHOWTEXT', false);
+  SHOW_COUNT_DEBUG = createCheckbox('DEBUG COUNT', false);
+  SHOW_ORIENTATION_DEBUG = createCheckbox('DEBUG POSITIONING', false);
+
+
   document.querySelector("body").style.padding = PADDING / 2
   document.querySelector("body").style.background = `rgb(${BACKGROUND_COLOR[0]}, ${BACKGROUND_COLOR[0]}, ${BACKGROUND_COLOR[0]})`
 }
@@ -379,22 +388,22 @@ reDeploy(leaf) {
 
 
 show() {
-  if (TREE_DEBUG) {
+  if (TREE_DEBUG.checked()) {
     let c = color(0, 255, 0, 75)
     fill(255, 75)
     noStroke()
     let textt = ""
-    if (SHOW_ORIENTATION) {
+    if (SHOW_ORIENTATION_DEBUG.checked()) {
       textt = `${this.title}`
     }
-    if (SHOW_COUNT && SHOW_ORIENTATION) {
+    if (SHOW_COUNT_DEBUG.checked() && SHOW_ORIENTATION_DEBUG.checked()) {
       textt += " "
     }
-    if (SHOW_COUNT) {
+    if (SHOW_COUNT_DEBUG.checked()) {
       textt += ` ${this.size()}`
     }
 
-    if (SHOW_TEXT) {
+    if (SHOW_TEXT_DEBUG.checked()) {
       text(textt, this.x0 + (this.x1 - this.x0) / 2 - (textt.length) / 2, this.y0 + (this.y1 - this.y0) / 2);
     }
 
