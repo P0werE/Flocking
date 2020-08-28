@@ -1,27 +1,38 @@
 "use strict"
-const ENTITY_SIZE = 20
-const ENTITY_MAX_VELOCITY = 5
 
 const ORIGIN_VECTOR = new p5.Vector(1, 0);
-const AMOUNT = 150
+
 const PADDING = 10
-const BACKGROUND_COLOR = [10, 10, 51]
-const FPS = 60
+const BACKGROUND_COLOR = [[10, 10, 51], [0, 100]][0]
+const FPS = 50
 
-const ZOOM = 1.5
-
-
-const TREE_CAP = AMOUNT / 20;
+const ZOOM = 1.2
 
 
+
+
+
+
+const AMOUNT = 1000
+
+const ENTITY_SIZE = 20
+const ENTITY_MAX_VELOCITY = 5
+const ENTITIY_FORCE = .5
+const ENTITY_PERSONAL_SPACE = ENTITY_SIZE
+const ENTITY_DETECTION_RANGE = ENTITY_MAX_VELOCITY * 6
+
+
+
+
+const TREE_CAP = AMOUNT/10;
 let TREE_DEBUG = false
 let SHOW_TEXT_DEBUG = false
 let SHOW_COUNT_DEBUG = false
 let SHOW_ORIENTATION_DEBUG = false
 
-const ENTITY_PERSONAL_SPACE = ENTITY_SIZE
-const ENTITY_DETECTION_RANGE = 75
 
+
+let comparisions = 0
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
@@ -31,14 +42,14 @@ let tree = undefined
 
 function windowResized() {
   noLoop()
-  resizeCanvas((windowWidth - PADDING) / ZOOM,( windowHeight - PADDING)/ ZOOM)
+  resizeCanvas((windowWidth - PADDING) / ZOOM, (windowHeight - PADDING) / ZOOM)
   tree.renew()
   loop()
 }
 
 function setup() {
   background(...BACKGROUND_COLOR);
-  createCanvas((windowWidth - PADDING)/ ZOOM, (windowHeight - PADDING)/ ZOOM);
+  createCanvas((windowWidth - PADDING) / ZOOM, (windowHeight - PADDING) / ZOOM);
   tree = new TreeHandler()
   entities = generateEntities(tree, AMOUNT)
   frameRate(FPS);
@@ -53,7 +64,10 @@ function setup() {
   document.querySelector("body").style.background = `rgb(${BACKGROUND_COLOR[0]}, ${BACKGROUND_COLOR[0]}, ${BACKGROUND_COLOR[0]})`
 }
 
+let count = 1
 function draw() {
+  comparisions = 0
+
   background(...BACKGROUND_COLOR);
   tree.reClamp()
   tree.update()
@@ -62,6 +76,7 @@ function draw() {
   noStroke()
   fill(0, 255, 0)
   text(round(frameRate()), width - 20, height - 10);
+  text(round(comparisions / count), width - 50, height - 20);
 }
 
 
@@ -115,7 +130,7 @@ function calculateLength(a) {
 class Entity {
   constructor(color, size, posX, posY) {
     this.maxSpeed = ENTITY_MAX_VELOCITY
-    this.maxForce = .5;
+    this.maxForce = ENTITIY_FORCE;
     this.position = new p5.Vector(posX, posY)
     this.size = sqrt(size * 2 / 3);
     this.color = color;
@@ -134,19 +149,36 @@ class Entity {
 
     realignVector(this.position)
 
-    strokeWeight(this.size * 2)
+    strokeWeight(this.size * 1.5)
     stroke(this.color)
     let cpyy = this.velocity.copy()
     cpyy.add(this.position)
+
     line(cpyy.x, cpyy.y, (cpyy.x + this.acceleration.x), (cpyy.y + this.acceleration.y))
     strokeWeight(1)
     this.acceleration.mult(0);
   }
 
   flock(boids) {
-    let alignment = this.align(boids);
-    let cohesion = this.cohesion(boids);
-    let separation = this.separation(boids);
+    let neigh = new Set()
+    for (let other of boids) {
+      if (other != this) {
+        let d = distanceBoids([
+          this.position.x,
+          this.position.y],
+          [other.position.x,
+          other.position.y],
+          ENTITY_DETECTION_RANGE
+        );
+        if (d < ENTITY_DETECTION_RANGE) {
+          neigh.add([other, d])
+        }
+      }
+    }
+
+    let alignment = this.align(neigh);
+    let cohesion = this.cohesion(neigh);
+    let separation = this.separation(neigh);
 
     this.acceleration.add(alignment);
     this.acceleration.add(cohesion);
@@ -156,16 +188,10 @@ class Entity {
   align(boids) {
     let steering = createVector();
     let total = 0;
-    for (let other of boids) {
-      let d = distanceBoids([
-        this.position.x,
-        this.position.y],
-        [other.position.x,
-        other.position.y],
-        ENTITY_DETECTION_RANGE
-      );
-      if (other != this && d < ENTITY_DETECTION_RANGE
-        && ENTITY_PERSONAL_SPACE < d) {
+    for (let tuple of boids) {
+      let other = tuple[0]
+      let d = tuple[1]
+      if (ENTITY_PERSONAL_SPACE < d) {
         steering.add(other.velocity);
         total++;
       }
@@ -182,16 +208,10 @@ class Entity {
   cohesion(boids) {
     let steering = createVector();
     let total = 0;
-    for (let other of boids) {
-      let d = distanceBoids([
-        this.position.x,
-        this.position.y],
-        [other.position.x,
-        other.position.y],
-        ENTITY_DETECTION_RANGE
-      );
-      if (other != this && d < ENTITY_DETECTION_RANGE
-        && ENTITY_PERSONAL_SPACE < d) {
+    for (let tuple of boids) {
+      let other = tuple[0]
+      let d = tuple[1]
+      if (ENTITY_PERSONAL_SPACE < d) {
         steering.add(other.position);
         total++;
       }
@@ -209,20 +229,13 @@ class Entity {
   separation(boids) {
     let steering = createVector();
     let total = 0;
-    for (let other of boids) {
-      let d = distanceBoids([
-        this.position.x,
-        this.position.y],
-        [other.position.x,
-        other.position.y],
-        ENTITY_DETECTION_RANGE
-      );
-      if (other != this && d < ENTITY_DETECTION_RANGE) {
-        let diff = p5.Vector.sub(this.position, other.position);
-        diff.div(d * d);
-        steering.add(diff);
-        total++;
-      }
+    for (let tuple of boids) {
+      let other = tuple[0]
+      let d = tuple[1]
+      let diff = p5.Vector.sub(this.position, other.position);
+      diff.div(d * d);
+      steering.add(diff);
+      total++;
     }
     if (total > 0) {
       steering.div(total);
@@ -340,230 +353,230 @@ class Node extends Tree {
           let subtree = e.getSubTree()
           subtree.forEach(x => {
             x.leafes.forEach(element => {
-            this.leafes.add(element)
+              this.leafes.add(element)
+            })
           })
         })
-      })
-      this.branches = []
-      this.split = false
+        this.branches = []
+        this.split = false
+      } else {
+        this.branches.forEach(e => {
+          e.reClampTree()
+        })
+      }
+    }
+  }
+
+
+  update(root) {
+    if (this.split) {
+      this.branches.forEach(e => e.update(root))
     } else {
+      this.leafes.forEach((val) => {
+        val.executeOnLeaf((e) => {
+          let entis = root.getNeighbouredBoids(e.position.x, e.position.y, ENTITY_DETECTION_RANGE)
+          e.flock(entis)
+          e.update()
+        })
+
+        let afterX, afterY
+        [afterX, afterY] = val.coordinates()
+        if (!this.inBoundary(afterX, afterY)) {
+          this.leafes.delete(val)
+          this.reDeploy(val)
+        }
+      })
+    }
+  }
+
+  reDeploy(leaf) {
+    let x, y
+    [x, y] = leaf.coordinates()
+    let p = this
+    while (!p.inBoundary(x, y)) {
+      p = p.parent
+    }
+    p.add(leaf)
+  }
+
+
+  show() {
+    if (TREE_DEBUG.checked()) {
+      let c = color(0, 255, 0, 75)
+      fill(255, 75)
+      noStroke()
+      let textt = ""
+      if (SHOW_ORIENTATION_DEBUG.checked()) {
+        textt = `${this.title}`
+      }
+      if (SHOW_COUNT_DEBUG.checked() && SHOW_ORIENTATION_DEBUG.checked()) {
+        textt += " "
+      }
+      if (SHOW_COUNT_DEBUG.checked()) {
+        textt += ` ${this.size()}`
+      }
+
+      if (SHOW_TEXT_DEBUG.checked()) {
+        text(textt, this.x0 + (this.x1 - this.x0) / 2 - (textt.length) / 2, this.y0 + (this.y1 - this.y0) / 2);
+      }
+
+      fill(0, 0, 0, 0)
+      stroke(c)
+      strokeWeight(1)
+      rect(this.x0, this.y0, this.x1 - this.x0, this.y1 - this.y0)
+    }
+    if (this.split) {
+      for (let i of this.branches) {
+        i.show();
+      }
+    } else {
+      this.leafes.forEach(e => e.show())
+    }
+  }
+  getLeafes() {
+    let leafes = new Set()
+    if (this.split) {
       this.branches.forEach(e => {
-        e.reClampTree()
+        this.add(...e.getLeafes())
       })
+      return leafes
+    } else {
+      this.leafes.forEach(e => leafes.add(e))
+      if (this.leafes.has(undefined)) {
+        print("LEAFES:", this.leafes)
+      }
+      return leafes
     }
   }
-}
 
+  getSubTree() {
+    if (this.split) {
+      let sub = []
+      this.branches.forEach(ele => {
 
-update(root){
-  if (this.split) {
-    this.branches.forEach(e => e.update(root))
-  } else {
-    this.leafes.forEach((val) => {
-      val.executeOnLeaf((e) => {
-        let entis = root.getNeighbouredBoids(e.position.x, e.position.y, ENTITY_DETECTION_RANGE)
-        e.flock(entis)
-        e.update()
+        sub.push(...ele.getSubTree())
       })
-
-      let afterX, afterY
-      [afterX, afterY] = val.coordinates()
-      if (!this.inBoundary(afterX, afterY)) {
-        this.leafes.delete(val)
-        this.reDeploy(val)
-      }
-    })
-  }
-}
-
-reDeploy(leaf) {
-  let x, y
-  [x, y] = leaf.coordinates()
-  let p = this
-  while (!p.inBoundary(x, y)) {
-    p = p.parent
-  }
-  p.add(leaf)
-}
-
-
-show() {
-  if (TREE_DEBUG.checked()) {
-    let c = color(0, 255, 0, 75)
-    fill(255, 75)
-    noStroke()
-    let textt = ""
-    if (SHOW_ORIENTATION_DEBUG.checked()) {
-      textt = `${this.title}`
+      return sub
+    } else {
+      return [this]
     }
-    if (SHOW_COUNT_DEBUG.checked() && SHOW_ORIENTATION_DEBUG.checked()) {
-      textt += " "
+  }
+
+  highlight() {
+    if (!this.split) {
+      LAST.add(this)
+      fill(255, 50)
+      noStroke();
+      rect(this.x0, this.y0, this.x1 - this.x0, this.y1 - this.y0)
     }
-    if (SHOW_COUNT_DEBUG.checked()) {
-      textt += ` ${this.size()}`
+  }
+
+  get(x, y) {
+    if (this.split) {
+      let curr = undefined
+      this.branches.forEach(val => {
+        if (val.inBoundary(x, y)) {
+          curr = val
+        }
+      })
+      return curr.get(x, y)
+    } else {
+      return this;
     }
+  }
 
-    if (SHOW_TEXT_DEBUG.checked()) {
-      text(textt, this.x0 + (this.x1 - this.x0) / 2 - (textt.length) / 2, this.y0 + (this.y1 - this.y0) / 2);
+  size() {
+    if (this.split) {
+      let count = 0
+      this.branches.forEach((val) => {
+        count += val.size()
+      })
+      return count
+    } else {
+      return this.leafes.size
     }
-
-    fill(0, 0, 0, 0)
-    stroke(c)
-    strokeWeight(1)
-    rect(this.x0, this.y0, this.x1 - this.x0, this.y1 - this.y0)
   }
-  if (this.split) {
-    for (let i of this.branches) {
-      i.show();
+
+  getBoundary() {
+    return [this.x0, this.y0, this.x1, this.y1]
+  }
+
+  inBoundary(x, y) {
+    let x0, y0, x1, y1
+    [x0, y0, x1, y1] = this.getBoundary()
+    return (x0 < x && y0 < y && x1 >= x && y1 >= y)
+  }
+
+  getSector(sector) {
+    if (this.split) {
+      return this.branches[sector]
     }
-  } else {
-    this.leafes.forEach(e => e.show())
   }
-}
-getLeafes(){
-  let leafes = new Set()
-  if (this.split) {
-    this.branches.forEach(e => {
-      this.add(...e.getLeafes())
-    })
-    return leafes
-  } else {
-    this.leafes.forEach(e => leafes.add(e))
-    if (this.leafes.has(undefined)) {
-      print("LEAFES:", this.leafes)
-    }
-    return leafes
-  }
-}
 
-getSubTree() {
-  if(this.split) {
-    let sub = []
-    this.branches.forEach(ele => {
-
-      sub.push(...ele.getSubTree())
-    })
-    return sub
-  } else {
-    return [this]
-  }
-}
-
-highlight() {
-  if (!this.split) {
-    LAST.add(this)
-    fill(255, 50)
-    noStroke();
-    rect(this.x0, this.y0, this.x1 - this.x0, this.y1 - this.y0)
-  }
-}
-
-get(x, y) {
-  if (this.split) {
-    let curr = undefined
-    this.branches.forEach(val => {
-      if (val.inBoundary(x, y)) {
-        curr = val
-      }
-    })
-    return curr.get(x, y)
-  } else {
-    return this;
-  }
-}
-
-size() {
-  if (this.split) {
-    let count = 0
-    this.branches.forEach((val) => {
-      count += val.size()
-    })
-    return count
-  } else {
-    return this.leafes.size
-  }
-}
-
-getBoundary() {
-  return [this.x0, this.y0, this.x1, this.y1]
-}
-
-inBoundary(x, y) {
-  let x0, y0, x1, y1
-  [x0, y0, x1, y1] = this.getBoundary()
-  return (x0 < x && y0 < y && x1 >= x && y1 >= y)
-}
-
-getSector(sector) {
-  if (this.split) {
-    return this.branches[sector]
-  }
-}
-
-add(e) {
-  if (this.split) {
-    this.branches.forEach(ele => {
-      if (ele.inBoundary(...e.coordinates())) {
+  add(e) {
+    if (this.split) {
+      this.branches.forEach(ele => {
+        if (ele.inBoundary(...e.coordinates())) {
+          if (e == undefined) {
+            print("EEE: ", undefined)
+          }
+          ele.add(e)
+        }
+      })
+    } else {
+      if ((this.leafes.size + 1) <= TREE_CAP) {
         if (e == undefined) {
           print("EEE: ", undefined)
         }
-        ele.add(e)
-      }
-    })
-  } else {
-    if ((this.leafes.size + 1) <= TREE_CAP) {
-      if (e == undefined) {
-        print("EEE: ", undefined)
-      }
-      e.reParent(this)
-      this.leafes.add(e);
-    } else {
-      let newBranches = []
-      let segmentX = (this.x1 - this.x0) / 2
-      let segmentY = (this.y1 - this.y0) / 2
-      let p0_ = this.x0
-      let p1_ = this.x0 + segmentX
-      let p2_ = this.x0 + segmentX * 2
-      let p_0 = this.y0
-      let p_1 = this.y0 + segmentY
-      let p_2 = this.y0 + segmentY * 2
+        e.reParent(this)
+        this.leafes.add(e);
+      } else {
+        let newBranches = []
+        let segmentX = (this.x1 - this.x0) / 2
+        let segmentY = (this.y1 - this.y0) / 2
+        let p0_ = this.x0
+        let p1_ = this.x0 + segmentX
+        let p2_ = this.x0 + segmentX * 2
+        let p_0 = this.y0
+        let p_1 = this.y0 + segmentY
+        let p_2 = this.y0 + segmentY * 2
 
-      let upperLeftt = new Node(p0_, p_0, p1_, p_1, this);
-      upperLeftt.title = "upperLeftt"
-      upperLeftt.depth = this.depth + 1
-      let upperRight = new Node(p1_, p_0, p2_, p_1, this);
-      upperRight.title = "upperRight"
-      upperRight.depth = this.depth + 1
-      let lowerLeftt = new Node(p0_, p_1, p1_, p_2, this);
-      lowerLeftt.title = "lowerLeftt"
-      lowerLeftt.depth = this.depth + 1
-      let lowerRight = new Node(p1_, p_1, p2_, p_2, this);
-      lowerRight.title = "lowerRight"
-      lowerRight.depth = this.depth + 1
+        let upperLeftt = new Node(p0_, p_0, p1_, p_1, this);
+        upperLeftt.title = "upperLeftt"
+        upperLeftt.depth = this.depth + 1
+        let upperRight = new Node(p1_, p_0, p2_, p_1, this);
+        upperRight.title = "upperRight"
+        upperRight.depth = this.depth + 1
+        let lowerLeftt = new Node(p0_, p_1, p1_, p_2, this);
+        lowerLeftt.title = "lowerLeftt"
+        lowerLeftt.depth = this.depth + 1
+        let lowerRight = new Node(p1_, p_1, p2_, p_2, this);
+        lowerRight.title = "lowerRight"
+        lowerRight.depth = this.depth + 1
 
-      newBranches.push(upperLeftt)
-      newBranches.push(upperRight)
-      newBranches.push(lowerLeftt)
-      newBranches.push(lowerRight)
+        newBranches.push(upperLeftt)
+        newBranches.push(upperRight)
+        newBranches.push(lowerLeftt)
+        newBranches.push(lowerRight)
 
-      this.leafes.forEach(leaf => {
-        newBranches.forEach((branch) => {
-          if (branch.inBoundary(...leaf.coordinates())) {
-            leaf.reParent(branch)
-            branch.add(leaf)
-            this.leafes.delete(leaf)
-          }
+        this.leafes.forEach(leaf => {
+          newBranches.forEach((branch) => {
+            if (branch.inBoundary(...leaf.coordinates())) {
+              leaf.reParent(branch)
+              branch.add(leaf)
+              this.leafes.delete(leaf)
+            }
+          })
         })
-      })
-      this.split = true
-      this.branches = newBranches
-      if (e == undefined) {
-        print("EEE: ", undefined)
+        this.split = true
+        this.branches = newBranches
+        if (e == undefined) {
+          print("EEE: ", undefined)
+        }
+        this.add(e)
       }
-      this.add(e)
     }
   }
-}
 }
 
 
@@ -710,6 +723,7 @@ function inDistance(coords, radius, branch) {
 
 
 function distanceBoids(coords, other, radius) {
+  comparisions++
   // return dist(...coords, ...other)
   let otherX, otherY
   [otherX, otherY] = other
@@ -750,9 +764,9 @@ function distanceBoids(coords, other, radius) {
     }
   }
   dots.forEach(e => {
+    comparisions++
     minDistance = min(minDistance, dist(otherX, otherY, ...e))
   })
-
   return (minDistance)
 }
 
