@@ -1,37 +1,32 @@
 "use strict"
 
-const ORIGIN_VECTOR = new p5.Vector(1, 0);
 
 const PADDING = 10
+const DIVOFFSET = 20
 const BACKGROUND_COLOR = [[10, 10, 51], [0, 100]][0]
-const FPS = 50
+const FPS = 100
 
-const ZOOM = 1.2
-
-
+const ZOOM = 1
 
 
+const AMOUNT = 500
 
-
-const AMOUNT = 1000
-
-const ENTITY_SIZE = 20
-const ENTITY_MAX_VELOCITY = 5
+const ENTITY_SIZE = 5
+const ENTITY_MAX_VELOCITY = 20
 const ENTITIY_FORCE = .5
-const ENTITY_PERSONAL_SPACE = ENTITY_SIZE
-const ENTITY_DETECTION_RANGE = ENTITY_MAX_VELOCITY * 6
+const ENTITY_PERSONAL_SPACE =  ENTITY_MAX_VELOCITY * 2
+const ENTITY_DETECTION_RANGE = ENTITY_MAX_VELOCITY * 3
 
-
-
-
-const TREE_CAP = AMOUNT/10;
+const TREE_CAP = AMOUNT / Math.sqrt(AMOUNT * 2);
 let TREE_DEBUG = false
 let SHOW_TEXT_DEBUG = false
 let SHOW_COUNT_DEBUG = false
 let SHOW_ORIENTATION_DEBUG = false
+let SHOW_INTERFACE = false
 
 
 
+let div = undefined
 let comparisions = 0
 
 //------------------------------------------------------------------------------
@@ -42,40 +37,60 @@ let tree = undefined
 
 function windowResized() {
   noLoop()
-  resizeCanvas((windowWidth - PADDING) / ZOOM, (windowHeight - PADDING) / ZOOM)
+  resizeCanvas((windowWidth - PADDING) / ZOOM, (windowHeight - PADDING) / ZOOM - DIVOFFSET)
   tree.renew()
   loop()
 }
 
 function setup() {
   background(...BACKGROUND_COLOR);
-  createCanvas((windowWidth - PADDING) / ZOOM, (windowHeight - PADDING) / ZOOM);
+  createCanvas((windowWidth - PADDING) / ZOOM, (windowHeight - PADDING) / ZOOM - DIVOFFSET, P2D);
   tree = new TreeHandler()
   entities = generateEntities(tree, AMOUNT)
   frameRate(FPS);
 
+  print("TREECAP: ", TREE_CAP)
+
+  div = createDiv();
+  div.addClass("mydiv")
+
+
   TREE_DEBUG = createCheckbox('DEBUG Tree', false);
-  SHOW_TEXT_DEBUG = createCheckbox('DEBUG SHOWTEXT', false);
   SHOW_COUNT_DEBUG = createCheckbox('DEBUG COUNT', false);
   SHOW_ORIENTATION_DEBUG = createCheckbox('DEBUG POSITIONING', false);
+  SHOW_INTERFACE = createCheckbox('FPS', false);
+
+  div.child(TREE_DEBUG)
+  div.child(SHOW_COUNT_DEBUG)
+  div.child(SHOW_ORIENTATION_DEBUG)
+  div.child(SHOW_INTERFACE)
 
 
   document.querySelector("body").style.padding = PADDING / 2
   document.querySelector("body").style.background = `rgb(${BACKGROUND_COLOR[0]}, ${BACKGROUND_COLOR[0]}, ${BACKGROUND_COLOR[0]})`
 }
-
+let fr = 0
 let count = 1
+let framectr = 1
 function draw() {
   comparisions = 0
+  framectr++
+  fr += frameRate()
 
   background(...BACKGROUND_COLOR);
   tree.reClamp()
   tree.update()
   tree.show()
 
+  if (SHOW_INTERFACE.checked()) {
+    showDebug()
+  }
+}
+
+function showDebug() {
   noStroke()
   fill(0, 255, 0)
-  text(round(frameRate()), width - 20, height - 10);
+  text(round(fr / framectr), width - 20, height - 10);
   text(round(comparisions / count), width - 50, height - 20);
 }
 
@@ -91,35 +106,11 @@ function generateEntities(tree, AMOUNT) {
     let entity = new Entity(c,
       ENTITY_SIZE,
       ...[width * random(), height * random()])
-    tree.add(new Leaf(entity))
-    a.push(entity)
+    let n = new Leaf(entity)
+    tree.add(n)
+    a.push(n)
   }
   return a
-}
-
-
-//------------------------------------------------------------------------------
-//------------------------------------------------------------------------------
-//------------------------------------------------------------------------------
-
-function calculateVectorAngle(a, b) {
-  return acos(calculateDotProduct(a, b) / (calculateLength(a) * calculateLength(b)))
-}
-
-function calculateDotProduct(a, b) {
-  let val = Object.values(a)
-  let bval = Object.values(b)
-  return val.reduce((akk, ele, idx) => {
-    return akk + ele * bval[idx]
-  }, 0)
-}
-
-function calculateLength(a) {
-  let val = Object.values(a)
-  let count = val.reduce((akk, ele) => {
-    return akk + ele * ele
-  }, 0)
-  return sqrt(count)
 }
 
 
@@ -132,70 +123,76 @@ class Entity {
     this.maxSpeed = ENTITY_MAX_VELOCITY
     this.maxForce = ENTITIY_FORCE;
     this.position = new p5.Vector(posX, posY)
-    this.size = sqrt(size * 2 / 3);
+    this.size = size;
     this.color = color;
 
     this.velocity = p5.Vector.random2D();
     this.velocity.setMag(random(2, 4));
     this.acceleration = createVector();
 
-    this.next = undefined
+    this.nextPosition = undefined
+    this.nextVelocity = undefined
+
+    this.dir = new p5.Vector(0, 0)
   };
 
   update() {
-    this.position.add(this.velocity);
-    this.velocity.add(this.acceleration);
-    this.velocity.limit(this.maxSpeed);
+    this.nextPosition = new p5.Vector(0, 0)
+    this.nextPosition.add(this.position)
+    this.nextPosition.add(this.velocity)
 
-    realignVector(this.position)
+    this.nextVelocity = new p5.Vector(0, 0)
+    this.nextVelocity.add(this.velocity)
+    this.nextVelocity.add(this.acceleration)
+    this.nextVelocity.limit(this.maxSpeed)
 
-    strokeWeight(this.size * 1.5)
-    stroke(this.color)
-    let cpyy = this.velocity.copy()
-    cpyy.add(this.position)
 
-    line(cpyy.x, cpyy.y, (cpyy.x + this.acceleration.x), (cpyy.y + this.acceleration.y))
-    strokeWeight(1)
+    realignVector(this.nextPosition)
+
+
+    this.dir.set(this.nextPosition)
+    this.dir = this.dir.sub(this.position)
+    this.dir.setMag(1)
+
     this.acceleration.mult(0);
   }
 
+
+  flip() {
+    this.position = this.nextPosition
+    this.velocity = this.nextVelocity
+  }
+
+  
   flock(boids) {
     let neigh = new Set()
     for (let other of boids) {
       if (other != this) {
-        let d = distanceBoids([
-          this.position.x,
-          this.position.y],
-          [other.position.x,
-          other.position.y],
+        let d = distanceBoids(
+          this,
+          other,
           ENTITY_DETECTION_RANGE
         );
-        if (d < ENTITY_DETECTION_RANGE) {
+        if (d < (ENTITY_DETECTION_RANGE * ENTITY_DETECTION_RANGE)) {
           neigh.add([other, d])
         }
       }
     }
 
-    let alignment = this.align(neigh);
-    let cohesion = this.cohesion(neigh);
-    let separation = this.separation(neigh);
+    let alignment   = this.align(neigh);
+    let cohesion    = this.cohesion(neigh);
+    let separation  = this.separation(neigh);
 
     this.acceleration.add(alignment);
     this.acceleration.add(cohesion);
     this.acceleration.add(separation);
+
   }
 
   align(boids) {
     let steering = createVector();
-    let total = 0;
-    for (let tuple of boids) {
-      let other = tuple[0]
-      let d = tuple[1]
-      if (ENTITY_PERSONAL_SPACE < d) {
-        steering.add(other.velocity);
-        total++;
-      }
-    }
+    let total = boids.size;
+    boids.forEach(e => steering.add(e[0].velocity))
     if (total > 0) {
       steering.div(total);
       steering.setMag(this.maxSpeed);
@@ -207,15 +204,8 @@ class Entity {
 
   cohesion(boids) {
     let steering = createVector();
-    let total = 0;
-    for (let tuple of boids) {
-      let other = tuple[0]
-      let d = tuple[1]
-      if (ENTITY_PERSONAL_SPACE < d) {
-        steering.add(other.position);
-        total++;
-      }
-    }
+    let total = boids.size;
+    boids.forEach(e => steering.add(e[0].position ))
     if (total > 0) {
       steering.div(total);
       steering.sub(this.position);
@@ -230,12 +220,12 @@ class Entity {
     let steering = createVector();
     let total = 0;
     for (let tuple of boids) {
-      let other = tuple[0]
-      let d = tuple[1]
-      let diff = p5.Vector.sub(this.position, other.position);
-      diff.div(d * d);
-      steering.add(diff);
-      total++;
+      if((ENTITY_PERSONAL_SPACE * ENTITY_PERSONAL_SPACE) > tuple[1] ){
+        let diff = p5.Vector.sub(this.position, tuple[0].position);
+        diff.div(tuple[1]) ;
+        steering.add(diff);
+        total++
+      }
     }
     if (total > 0) {
       steering.div(total);
@@ -246,32 +236,28 @@ class Entity {
     return steering;
   }
 
-
-  setColor(color) {
-    this.color = color
-  }
-
-  setPos(x, y) {
-    this.position.set(x, y)
-  }
-
-  setVector(newVector) {
-    this.direction = newVector
-  }
-
-  addVector(newX, newY) {
-    this.direction.add(newX, newY)
-  }
-
-  addVectorAngle(x) {
-    this.direction.rotate(x)
-  }
-
-
   show() {
     strokeWeight(this.size)
     stroke(this.color)
     point(this.position.x, this.position.y)
+
+    // let x = this.position.x
+    // let y = this.position.y
+    // let n = 5
+    // let coss = cos(this.dir.heading())
+    // let sinn = sin(this.dir.heading())
+  
+    // strokeWeight(2)
+    // stroke(this.color)
+    // fill(this.color)
+    
+    // triangle(
+    //   x,
+    //   y,
+    //   x - coss * n,
+    //   y - sinn * n,
+    //   x - coss * n,
+    //   y + sinn * n)
   }
 }
 
@@ -281,8 +267,7 @@ class Entity {
 //------------------------------------------------------------------------------
 
 class Tree {
-  constructor() {
-  }
+  constructor() { }
   getParent() { }
   show() { }
   getBoundaries() { }
@@ -320,22 +305,26 @@ class Leaf extends Tree {
   executeOnLeaf(func) {
     func(this.val)
   }
+  flip() {
+    this.getValue().flip()
+  }
 }
+
 
 class Node extends Tree {
   constructor(x, y, x1, y1, parent) {
     super()
     this.branches = [];
     this.parent = parent;
-    this.x0 = x;
-    this.y0 = y;
-    this.x1 = x1;
-    this.y1 = y1;
+    this.pos0 = new p5.Vector(x, y)
+    this.pos1 = new p5.Vector(x1, y1)
+    this.center = new p5.Vector(x + (x1 - x) / 2, y + (y1 - y) / 2)
+    this.diagonal = this.pos1.dist(this.pos0)
     this.split = false;
     this.title = "root";
-    this.depth = 0;
     this.leafes = new Set();
   }
+
 
   executeOnLeaf(func) {
     if (this.split) {
@@ -345,9 +334,9 @@ class Node extends Tree {
     }
   }
 
+
   reClampTree() {
     if (this.split) {
-      let newLeafes = new Set()
       if (this.size() <= TREE_CAP) {
         this.branches.forEach(e => {
           let subtree = e.getSubTree()
@@ -374,20 +363,32 @@ class Node extends Tree {
     } else {
       this.leafes.forEach((val) => {
         val.executeOnLeaf((e) => {
-          let entis = root.getNeighbouredBoids(e.position.x, e.position.y, ENTITY_DETECTION_RANGE)
+          let entis = root.getNeighbouredBoids(e.position, ENTITY_DETECTION_RANGE)
           e.flock(entis)
           e.update()
         })
-
-        let afterX, afterY
-        [afterX, afterY] = val.coordinates()
-        if (!this.inBoundary(afterX, afterY)) {
-          this.leafes.delete(val)
-          this.reDeploy(val)
-        }
       })
     }
   }
+
+
+  flip() {
+    if (this.split) {
+      this.branches.forEach(e => e.flip())
+    } else {
+      this.leafes.forEach(e => {
+        e.flip()
+        let afterX, afterY
+        [afterX, afterY] = e.coordinates()
+        if (!this.inBoundary(afterX, afterY)) {
+          this.leafes.delete(e)
+          this.reDeploy(e)
+        }
+      }
+      )
+    }
+  }
+
 
   reDeploy(leaf) {
     let x, y
@@ -396,15 +397,13 @@ class Node extends Tree {
     while (!p.inBoundary(x, y)) {
       p = p.parent
     }
+
     p.add(leaf)
   }
 
 
   show() {
-    if (TREE_DEBUG.checked()) {
-      let c = color(0, 255, 0, 75)
-      fill(255, 75)
-      noStroke()
+    if (SHOW_ORIENTATION_DEBUG.checked() || SHOW_COUNT_DEBUG.checked()) {
       let textt = ""
       if (SHOW_ORIENTATION_DEBUG.checked()) {
         textt = `${this.title}`
@@ -415,15 +414,20 @@ class Node extends Tree {
       if (SHOW_COUNT_DEBUG.checked()) {
         textt += ` ${this.size()}`
       }
+      fill(255, 100)
+      noStroke()
+      strokeWeight(2)
+      text(textt,
+        this.center.x - (textt.length) / 2,
+        this.center.y);
+    }
 
-      if (SHOW_TEXT_DEBUG.checked()) {
-        text(textt, this.x0 + (this.x1 - this.x0) / 2 - (textt.length) / 2, this.y0 + (this.y1 - this.y0) / 2);
-      }
-
-      fill(0, 0, 0, 0)
+    if (TREE_DEBUG.checked()) {
+      let c = color(0, 255, 0, 150)
       stroke(c)
       strokeWeight(1)
-      rect(this.x0, this.y0, this.x1 - this.x0, this.y1 - this.y0)
+      fill(0, 0)
+      rect(this.pos0.x, this.pos0.y, this.pos1.x - this.pos0.x, this.pos1.y - this.pos0.y)
     }
     if (this.split) {
       for (let i of this.branches) {
@@ -433,6 +437,8 @@ class Node extends Tree {
       this.leafes.forEach(e => e.show())
     }
   }
+
+
   getLeafes() {
     let leafes = new Set()
     if (this.split) {
@@ -442,18 +448,15 @@ class Node extends Tree {
       return leafes
     } else {
       this.leafes.forEach(e => leafes.add(e))
-      if (this.leafes.has(undefined)) {
-        print("LEAFES:", this.leafes)
-      }
       return leafes
     }
   }
+
 
   getSubTree() {
     if (this.split) {
       let sub = []
       this.branches.forEach(ele => {
-
         sub.push(...ele.getSubTree())
       })
       return sub
@@ -462,28 +465,6 @@ class Node extends Tree {
     }
   }
 
-  highlight() {
-    if (!this.split) {
-      LAST.add(this)
-      fill(255, 50)
-      noStroke();
-      rect(this.x0, this.y0, this.x1 - this.x0, this.y1 - this.y0)
-    }
-  }
-
-  get(x, y) {
-    if (this.split) {
-      let curr = undefined
-      this.branches.forEach(val => {
-        if (val.inBoundary(x, y)) {
-          curr = val
-        }
-      })
-      return curr.get(x, y)
-    } else {
-      return this;
-    }
-  }
 
   size() {
     if (this.split) {
@@ -497,62 +478,38 @@ class Node extends Tree {
     }
   }
 
-  getBoundary() {
-    return [this.x0, this.y0, this.x1, this.y1]
-  }
-
   inBoundary(x, y) {
-    let x0, y0, x1, y1
-    [x0, y0, x1, y1] = this.getBoundary()
-    return (x0 < x && y0 < y && x1 >= x && y1 >= y)
-  }
-
-  getSector(sector) {
-    if (this.split) {
-      return this.branches[sector]
-    }
+    return (this.pos0.x < x && this.pos0.y < y && this.pos1.x >= x && this.pos1.y >= y)
   }
 
   add(e) {
     if (this.split) {
       this.branches.forEach(ele => {
         if (ele.inBoundary(...e.coordinates())) {
-          if (e == undefined) {
-            print("EEE: ", undefined)
-          }
           ele.add(e)
         }
       })
     } else {
       if ((this.leafes.size + 1) <= TREE_CAP) {
-        if (e == undefined) {
-          print("EEE: ", undefined)
-        }
         e.reParent(this)
         this.leafes.add(e);
       } else {
         let newBranches = []
-        let segmentX = (this.x1 - this.x0) / 2
-        let segmentY = (this.y1 - this.y0) / 2
-        let p0_ = this.x0
-        let p1_ = this.x0 + segmentX
-        let p2_ = this.x0 + segmentX * 2
-        let p_0 = this.y0
-        let p_1 = this.y0 + segmentY
-        let p_2 = this.y0 + segmentY * 2
+        let p0_ = this.pos0.x
+        let p1_ = this.center.x
+        let p2_ = this.pos1.x
+        let p_0 = this.pos0.y
+        let p_1 = this.center.y
+        let p_2 = this.pos1.y
 
         let upperLeftt = new Node(p0_, p_0, p1_, p_1, this);
         upperLeftt.title = "upperLeftt"
-        upperLeftt.depth = this.depth + 1
         let upperRight = new Node(p1_, p_0, p2_, p_1, this);
         upperRight.title = "upperRight"
-        upperRight.depth = this.depth + 1
         let lowerLeftt = new Node(p0_, p_1, p1_, p_2, this);
         lowerLeftt.title = "lowerLeftt"
-        lowerLeftt.depth = this.depth + 1
         let lowerRight = new Node(p1_, p_1, p2_, p_2, this);
         lowerRight.title = "lowerRight"
-        lowerRight.depth = this.depth + 1
 
         newBranches.push(upperLeftt)
         newBranches.push(upperRight)
@@ -570,9 +527,6 @@ class Node extends Tree {
         })
         this.split = true
         this.branches = newBranches
-        if (e == undefined) {
-          print("EEE: ", undefined)
-        }
         this.add(e)
       }
     }
@@ -592,19 +546,9 @@ class TreeHandler {
   add(e) {
     this.head.add(e)
   }
-  searchTree(x, y) {
-    return this.head.searchNeighbour(x, y)
-  }
+
   show() {
     this.head.show()
-  }
-
-  get(x, y) {
-    return this.head.get(x, y)
-  }
-
-  highlight(x, y) {
-    this.head.highlight(x, y)
   }
 
   getTree() {
@@ -617,22 +561,19 @@ class TreeHandler {
 
   update() {
     this.head.update(this)
+    this.head.flip()
   }
 
   reClamp() {
     this.head.reClampTree()
   }
 
-
-  getNeighbouredBoids(x, y, radius) {
+  getNeighbouredBoids(vector, radius) {
     let c = tree.getTree()
     let neighbours = new Set()
     c.forEach(e => {
-      if (inDistance([x, y], radius, e)) {
-        e.getLeafes().forEach((element, i, list) => {
-          if (list.has(undefined)) {
-            print(list)
-          }
+      if (inDistance(vector, radius, e)) {
+        e.getLeafes().forEach((element) => {
           neighbours.add(element.getValue())
         })
       }
@@ -642,134 +583,128 @@ class TreeHandler {
 
 
   renew() {
-    let newSet = this.head.getLeafes()
     this.head = new Node(0, 0, width, height, undefined);
-    newSet.forEach(e => {
-      this.head.add(e)
-    })
+    entities = generateEntities(this, AMOUNT)
   }
-
 }
-
-
-
 
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
-
-function diagonal(branch) {
-  let treeX0, treeY0, treeX1, treeY1
-  [treeX0, treeY0, treeX1, treeY1] = branch.getBoundary()
-  return dist(treeX0, treeY0, treeX1, treeY1)
-}
-
-function middle(branch) {
-  let treeX0, treeY0, treeX1, treeY1
-  [treeX0, treeY0, treeX1, treeY1] = branch.getBoundary()
-  let segmentX = (treeX1 - treeX0) / 2
-  let segmentY = (treeY1 - treeY0) / 2
-  let treeMidX = treeX0 + segmentX
-  let treeMidY = treeY0 + segmentY
-  return [treeMidX, treeMidY]
-}
 
 
 function inDistance(coords, radius, branch) {
-  let branchX, branchY
-  [branchX, branchY] = middle(branch)
-  let minDistance = dist(branchX, branchY, ...coords)
+  comparisions++
+  let xx = branch.center.x - coords.x
+  let yy = branch.center.y - coords.y
+  let minDistance = xx * xx  + yy * yy
+
+  // return (minDistance - branch.diagonal / 2 - radius) <= 0
   let dots = []
-  let x, y
-  [x, y] = coords
-  if ((x - radius) < 0) {
-    if ((y - radius) < 0) {
-      dots.push([x + width, y + height])
-    }
-    if ((y + radius) > height) {
-      dots.push([x + width, y - height])
-    }
-  }
-  if ((x + radius) > width) {
-    if ((y - radius) < 0) {
-      dots.push([x - width, y + height])
-    }
-    if ((y + radius) > height) {
-      dots.push([x - width, y - height])
-    }
-  }
-  if (0 < x && x < width) {
-    if ((y - radius) < 0) {
-      dots.push([x, y + height])
-    }
-    if ((y + radius) > height) {
-      dots.push([x, y - height])
-    }
-  }
-  if (0 < y && y < height) {
+  let x = coords.x;
+  let y = coords.y;
+  if ((x - radius) < 0 ||
+    (x + radius) > width ||
+    (y - radius) < 0 ||
+    (y + radius) > height) {
+    let xes = []
     if ((x - radius) < 0) {
-      dots.push([x + width, y])
+      xes.push(x + width)
     }
     if ((x + radius) > width) {
-      dots.push([x - width, y])
+      xes.push(x - width)
     }
+
+    if (0 < x && x < width) {
+      xes.push(x)
+    }
+
+    let yes = []
+    if ((y - radius) < 0) {
+      yes.push(y + height)
+    }
+    if ((y + radius) > height) {
+      yes.push(y - height)
+    }
+
+    if (0 < y && y < height) {
+      yes.push(y)
+    }
+
+    xes.forEach(xx => {
+      yes.forEach(yy => {
+        dots.push([xx, yy])
+      })
+    })
   }
+
   dots.forEach(e => {
-    minDistance = min(minDistance, dist(branchX, branchY, ...e))
+    xx = branch.center.x - e[0]
+    yy = branch.center.y - e[1]
+    let ooo = xx * xx  + yy * yy
+    minDistance = min(minDistance, ooo)
+    comparisions++
   })
-  return (minDistance - diagonal(branch) / 2 - radius) <= 0
+  return (minDistance - ((branch.diagonal*branch.diagonal)/ 4)  - radius * radius) <= 0
 }
 
 
 function distanceBoids(coords, other, radius) {
   comparisions++
-  // return dist(...coords, ...other)
-  let otherX, otherY
-  [otherX, otherY] = other
-  let minDistance = dist(otherX, otherY, ...coords)
+  let xx = other.position.x - coords.position.x
+  let yy = other.position.y - coords.position.y
+  let minDistance = xx * xx  + yy * yy
+  // return minDistance
   let dots = []
-  let x, y
-  [x, y] = coords
-  if ((x - radius) < 0) {
-    if ((y - radius) < 0) {
-      dots.push([x + width, y + height])
-    }
-    if ((y + radius) > height) {
-      dots.push([x + width, y - height])
-    }
-  }
-  if ((x + radius) > width) {
-    if ((y - radius) < 0) {
-      dots.push([x - width, y + height])
-    }
-    if ((y + radius) > height) {
-      dots.push([x - width, y - height])
-    }
-  }
-  if (0 < x && x < width) {
-    if ((y - radius) < 0) {
-      dots.push([x, y + height])
-    }
-    if ((y + radius) > height) {
-      dots.push([x, y - height])
-    }
-  }
-  if (0 < y && y < height) {
+  let x = coords.x;
+  let y = coords.y;
+
+  if ((x - radius) < 0 ||
+    (x + radius) > width ||
+    (y - radius) < 0 ||
+    (y + radius) > height) {
+    let xes = []
     if ((x - radius) < 0) {
-      dots.push([x + width, y])
+      xes.push(x + width)
     }
     if ((x + radius) > width) {
-      dots.push([x - width, y])
+      xes.push(x - width)
     }
+
+    if (0 < x && x < width) {
+      xes.push(x)
+    }
+
+    let yes = []
+    if ((y - radius) < 0) {
+      yes.push(y + height)
+    }
+    if ((y + radius) > height) {
+      yes.push(y - height)
+    }
+
+    if (0 < y && y < height) {
+      yes.push(y)
+    }
+
+    xes.forEach(xx => {
+      yes.forEach(yy => {
+        dots.push([xx, yy])
+      })
+    })
   }
+
   dots.forEach(e => {
+    xx = other.center.x - e[0]
+    yy = other.center.y - e[1]
+    let ooo = xx * xx  + yy * yy
+    minDistance = min(minDistance, ooo)
     comparisions++
-    minDistance = min(minDistance, dist(otherX, otherY, ...e))
   })
+
   return (minDistance)
 }
-
 
 
 let stopped = false
@@ -785,35 +720,18 @@ function keyPressed() {
   } else if (key == "d") {
     draw()
   }
-
 }
+
 
 let fullScrn = false
 function mouseClicked() {
-  if (TREE_DEBUG && 0 <= mouseX && mouseX <= width && 0 <= mouseY && mouseY <= height) {
-    draw()
-    let c = tree.getTree()
-    let radius = 50
+  if (0 <= mouseX && mouseX <= width && 0 <= mouseY && mouseY <= height) {
 
-    strokeWeight(10)
-    stroke(255)
-    point(mouseX, mouseY)
-    strokeWeight(1)
-    circle(mouseX, mouseY, radius * 2)
-
-    c.forEach(e => {
-      if (inDistance([mouseX, mouseY], radius, e)) {
-        strokeWeight(10)
-        stroke(0, 255, 0)
-        point(...middle(e))
-      }
-    })
   } else {
     // fullScrn = !fullScrn
     // fullscreen(fullScrn)
   }
 }
-
 
 
 function getCoordinates(x, y) {
@@ -822,30 +740,6 @@ function getCoordinates(x, y) {
   }
   return [rejust(x, width), rejust(y, height)]
 }
-
-function sampleDots(pos, sample, radius) {
-  let dots = []
-  for (let i = 0; i < 360; i += 90 / sample) {
-    angleMode(DEGREES)
-    let x = pos[0] + cos(i) * radius
-    let y = pos[1] + sin(i) * radius
-    dots.push(getCoordinates(x, y))
-  }
-  return dots;
-}
-
-
-function calculateDegreeOffset(a, b) {
-  let diffX = (a[0] - b[0])
-  let diifY = (a[1] - b[1])
-  angleMode(DEGREES)
-  let beta = atan2(diifY, diffX)
-  beta = (beta + 180) % 360
-  let sampleX = cos(beta)
-  let sampleY = sin(beta)
-  return [sampleX, sampleY]
-}
-
 
 
 function realignVector(vector) {
