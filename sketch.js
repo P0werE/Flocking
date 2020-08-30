@@ -3,21 +3,26 @@
 
 const PADDING = 10
 const DIVOFFSET = 20
-const BACKGROUND_COLOR = [[10, 10, 51], [0, 100]][0]
-const FPS = 100
+const BACKGROUND_COLOR = [[10, 10, 51], [0, 150]][0]
+const FPS = 30
 
 const ZOOM = 1
 
 
-const AMOUNT = 500
+const AMOUNT = 800
 
 const ENTITY_SIZE = 5
 const ENTITY_MAX_VELOCITY = 20
-const ENTITIY_FORCE = .5
-const ENTITY_PERSONAL_SPACE =  ENTITY_MAX_VELOCITY * 2
+
+const ENTITY_ALIGN_FORCE = .2
+const ENTITY_COHEN_FORCE = .5
+const ENTITY_SEPAR_FORCE = 1
+
+
+const ENTITY_PERSONAL_SPACE =  ENTITY_SIZE * 2
 const ENTITY_DETECTION_RANGE = ENTITY_MAX_VELOCITY * 3
 
-const TREE_CAP = AMOUNT / Math.sqrt(AMOUNT * 2);
+const TREE_CAP = Math.sqrt(AMOUNT);
 let TREE_DEBUG = false
 let SHOW_TEXT_DEBUG = false
 let SHOW_COUNT_DEBUG = false
@@ -90,7 +95,7 @@ function draw() {
 function showDebug() {
   noStroke()
   fill(0, 255, 0)
-  text(round(fr / framectr), width - 20, height - 10);
+  text(round(frameRate()), width - 20, height - 10);
   text(round(comparisions / count), width - 50, height - 20);
 }
 
@@ -102,7 +107,7 @@ function showDebug() {
 function generateEntities(tree, AMOUNT) {
   let a = []
   for (let i = 0; i < AMOUNT; i++) {
-    let c = color(random(100, 255), random(100, 255), random(100, 255))
+    let c = [color(random(100, 255), random(100, 255), random(100, 255)), color(255)][0]
     let entity = new Entity(c,
       ENTITY_SIZE,
       ...[width * random(), height * random()])
@@ -121,7 +126,11 @@ function generateEntities(tree, AMOUNT) {
 class Entity {
   constructor(color, size, posX, posY) {
     this.maxSpeed = ENTITY_MAX_VELOCITY
-    this.maxForce = ENTITIY_FORCE;
+    
+    this.alignForce = ENTITY_ALIGN_FORCE;
+    this.cohenForce = ENTITY_COHEN_FORCE
+    this.separForce = ENTITY_SEPAR_FORCE
+
     this.position = new p5.Vector(posX, posY)
     this.size = size;
     this.color = color;
@@ -141,20 +150,22 @@ class Entity {
     this.nextPosition.add(this.position)
     this.nextPosition.add(this.velocity)
 
+
+
     this.nextVelocity = new p5.Vector(0, 0)
     this.nextVelocity.add(this.velocity)
     this.nextVelocity.add(this.acceleration)
+    this.nextVelocity.x += cos(random(-1, 1) * this.size) * .1
+    this.nextVelocity.y += sin(random(-1, 1) * this.size) * .1
     this.nextVelocity.limit(this.maxSpeed)
 
-
+   
+    this.dir = p5.Vector.sub(this.nextPosition, this.position)
+    this.dir.setMag(this.size)
+  
     realignVector(this.nextPosition)
-
-
-    this.dir.set(this.nextPosition)
-    this.dir = this.dir.sub(this.position)
-    this.dir.setMag(1)
-
     this.acceleration.mult(0);
+  
   }
 
 
@@ -168,7 +179,7 @@ class Entity {
     let neigh = new Set()
     for (let other of boids) {
       if (other != this) {
-        let d = distanceBoids(
+        let d = clostestDistToBoid(
           this,
           other,
           ENTITY_DETECTION_RANGE
@@ -187,6 +198,7 @@ class Entity {
     this.acceleration.add(cohesion);
     this.acceleration.add(separation);
 
+
   }
 
   align(boids) {
@@ -197,21 +209,28 @@ class Entity {
       steering.div(total);
       steering.setMag(this.maxSpeed);
       steering.sub(this.velocity);
-      steering.limit(this.maxForce);
+      steering.limit(this.alignForce);
     }
     return steering;
   }
 
   cohesion(boids) {
     let steering = createVector();
-    let total = boids.size;
-    boids.forEach(e => steering.add(e[0].position ))
+    let total = 0;
+    
+    boids.forEach(e => {
+      if( e[1] < (ENTITY_PERSONAL_SPACE * ENTITY_PERSONAL_SPACE )) {
+        steering.add(e[0].position )
+        total++
+      }
+    })
+
     if (total > 0) {
-      steering.div(total);
+      steering.div(total * sin(total));
       steering.sub(this.position);
       steering.setMag(this.maxSpeed);
       steering.sub(this.velocity);
-      steering.limit(this.maxForce);
+      steering.limit(this.cohenForce);
     }
     return steering;
   }
@@ -220,8 +239,8 @@ class Entity {
     let steering = createVector();
     let total = 0;
     for (let tuple of boids) {
-      if((ENTITY_PERSONAL_SPACE * ENTITY_PERSONAL_SPACE) > tuple[1] ){
-        let diff = p5.Vector.sub(this.position, tuple[0].position);
+      if( tuple[1] < (ENTITY_PERSONAL_SPACE * ENTITY_PERSONAL_SPACE )) {
+      let diff = p5.Vector.sub(this.position, tuple[0].position);
         diff.div(tuple[1]) ;
         steering.add(diff);
         total++
@@ -231,33 +250,34 @@ class Entity {
       steering.div(total);
       steering.setMag(this.maxSpeed);
       steering.sub(this.velocity);
-      steering.limit(this.maxForce);
+      steering.limit(this.separForce);
     }
     return steering;
   }
 
   show() {
+
+
+    // strokeWeight(this.size * 2)
+    // stroke(255, 10, 10, 255)
+    // line(this.position.x, this.position.y, this.position.x - cos(this.dir.heading())*this.size, this.position.y - sin(this.dir.heading())*this.size)
+    
+    // strokeWeight(this.size *1.6)
+    // stroke(255, 255)
+    // line(this.position.x, this.position.y, this.position.x - cos(this.dir.heading())*this.size, this.position.y - sin(this.dir.heading())*this.size)
+    push()
     strokeWeight(this.size)
     stroke(this.color)
     point(this.position.x, this.position.y)
+    strokeWeight(.5)
+    stroke(this.color)
+    fill(this.color)
+    translate(this.position)
+    rotate(HALF_PI + this.dir.heading())
+    triangle(-this.size, 0, 0, -this.size*4, this.size, 0)
+    pop()
 
-    // let x = this.position.x
-    // let y = this.position.y
-    // let n = 5
-    // let coss = cos(this.dir.heading())
-    // let sinn = sin(this.dir.heading())
-  
-    // strokeWeight(2)
-    // stroke(this.color)
-    // fill(this.color)
-    
-    // triangle(
-    //   x,
-    //   y,
-    //   x - coss * n,
-    //   y - sinn * n,
-    //   x - coss * n,
-    //   y + sinn * n)
+
   }
 }
 
@@ -571,16 +591,17 @@ class TreeHandler {
   getNeighbouredBoids(vector, radius) {
     let c = tree.getTree()
     let neighbours = new Set()
-    c.forEach(e => {
-      if (inDistance(vector, radius, e)) {
-        e.getLeafes().forEach((element) => {
+    c.forEach(branch => {
+      if (clostestDistToBranch(vector, radius, branch) 
+      - ((branch.diagonal*branch.diagonal)/ 2)  
+      - radius * radius <= 0) {
+        branch.getLeafes().forEach((element) => {
           neighbours.add(element.getValue())
         })
       }
     })
     return neighbours
   }
-
 
   renew() {
     this.head = new Node(0, 0, width, height, undefined);
@@ -594,116 +615,42 @@ class TreeHandler {
 //------------------------------------------------------------------------------
 
 
-function inDistance(coords, radius, branch) {
+function clostestDistToBranch(coords, radius, branch) {
   comparisions++
   let xx = branch.center.x - coords.x
   let yy = branch.center.y - coords.y
   let minDistance = xx * xx  + yy * yy
 
   // return (minDistance - branch.diagonal / 2 - radius) <= 0
-  let dots = []
   let x = coords.x;
   let y = coords.y;
-  if ((x - radius) < 0 ||
-    (x + radius) > width ||
-    (y - radius) < 0 ||
-    (y + radius) > height) {
-    let xes = []
-    if ((x - radius) < 0) {
-      xes.push(x + width)
-    }
-    if ((x + radius) > width) {
-      xes.push(x - width)
-    }
+  let dots = wrapAround(x,y,radius)
 
-    if (0 < x && x < width) {
-      xes.push(x)
-    }
-
-    let yes = []
-    if ((y - radius) < 0) {
-      yes.push(y + height)
-    }
-    if ((y + radius) > height) {
-      yes.push(y - height)
-    }
-
-    if (0 < y && y < height) {
-      yes.push(y)
-    }
-
-    xes.forEach(xx => {
-      yes.forEach(yy => {
-        dots.push([xx, yy])
-      })
-    })
-  }
-
-  dots.forEach(e => {
-    xx = branch.center.x - e[0]
-    yy = branch.center.y - e[1]
-    let ooo = xx * xx  + yy * yy
-    minDistance = min(minDistance, ooo)
+  return dots.reduce((acc, e) => {
     comparisions++
-  })
-  return (minDistance - ((branch.diagonal*branch.diagonal)/ 4)  - radius * radius) <= 0
+    let xxes = branch.center.x - e [0]
+    let yyes = branch.center.y -  e[1]
+    return min(acc, xxes * xxes +  yyes * yyes )
+  }, minDistance)
 }
 
 
-function distanceBoids(coords, other, radius) {
+function clostestDistToBoid(coords, other, radius) {
   comparisions++
   let xx = other.position.x - coords.position.x
   let yy = other.position.y - coords.position.y
   let minDistance = xx * xx  + yy * yy
   // return minDistance
-  let dots = []
   let x = coords.x;
   let y = coords.y;
+  let dots = wrapAround(x,y,radius)
 
-  if ((x - radius) < 0 ||
-    (x + radius) > width ||
-    (y - radius) < 0 ||
-    (y + radius) > height) {
-    let xes = []
-    if ((x - radius) < 0) {
-      xes.push(x + width)
-    }
-    if ((x + radius) > width) {
-      xes.push(x - width)
-    }
-
-    if (0 < x && x < width) {
-      xes.push(x)
-    }
-
-    let yes = []
-    if ((y - radius) < 0) {
-      yes.push(y + height)
-    }
-    if ((y + radius) > height) {
-      yes.push(y - height)
-    }
-
-    if (0 < y && y < height) {
-      yes.push(y)
-    }
-
-    xes.forEach(xx => {
-      yes.forEach(yy => {
-        dots.push([xx, yy])
-      })
-    })
-  }
-
-  dots.forEach(e => {
-    xx = other.center.x - e[0]
-    yy = other.center.y - e[1]
-    let ooo = xx * xx  + yy * yy
-    minDistance = min(minDistance, ooo)
+  return dots.reduce((acc, e) => {
     comparisions++
-  })
-
-  return (minDistance)
+    let xxes = other.center.x  - e [0]
+    let yyes = other.center.y -  e[1]
+    return min(acc, xxes * xxes +  yyes * yyes )
+  }, minDistance)
 }
 
 
@@ -745,4 +692,44 @@ function getCoordinates(x, y) {
 function realignVector(vector) {
   let newCoords = getCoordinates(...vector.array())
   vector.set(...newCoords)
+}
+
+
+function wrapAround(x,y, radius) {
+  let points = []
+  if ((x - radius) < 0 ||
+    (x + radius) > width ||
+    (y - radius) < 0 ||
+    (y + radius) > height) {
+    let xes = []
+    if ((x - radius) < 0) {
+      xes.push(x + width)
+    }
+    if ((x + radius) > width) {
+      xes.push(x - width)
+    }
+
+    if (0 < x && x < width) {
+      xes.push(x)
+    }
+
+    let yes = []
+    if ((y - radius) < 0) {
+      yes.push(y + height)
+    }
+    if ((y + radius) > height) {
+      yes.push(y - height)
+    }
+
+    if (0 < y && y < height) {
+      yes.push(y)
+    }
+
+    xes.forEach(xx => {
+      yes.forEach(yy => {
+        points.push([xx, yy])
+      })
+    })
+  }
+  return points
 }
