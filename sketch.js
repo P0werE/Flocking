@@ -3,23 +3,23 @@
 
 const PADDING = 10
 const DIVOFFSET = 20
-const BACKGROUND_COLOR = [[10, 10, 51], [0, 150]][0]
+const BACKGROUND_COLOR = [[10, 10, 51], [5, 5, 31, 150]][1]
 const FPS = 30
 
 const ZOOM = 1
 
 
-const AMOUNT = 800
+const AMOUNT = 500
 
-const ENTITY_SIZE = 5
-const ENTITY_MAX_VELOCITY = 20
+const ENTITY_SIZE = 3
+const ENTITY_MAX_VELOCITY = 5
 
-const ENTITY_ALIGN_FORCE = .2
-const ENTITY_COHEN_FORCE = .5
-const ENTITY_SEPAR_FORCE = 1
+const ENTITY_ALIGN_FORCE =  .75
+const ENTITY_COHEN_FORCE = .4 // 3
+const ENTITY_SEPAR_FORCE = .5 // .5
 
 
-const ENTITY_PERSONAL_SPACE =  ENTITY_SIZE * 2
+const ENTITY_PERSONAL_SPACE =  4 * ENTITY_SIZE * ENTITY_MAX_VELOCITY * 10
 const ENTITY_DETECTION_RANGE = ENTITY_MAX_VELOCITY * 3
 
 const TREE_CAP = Math.sqrt(AMOUNT);
@@ -34,6 +34,14 @@ let SHOW_INTERFACE = false
 let div = undefined
 let comparisions = 0
 
+
+let SEEK_TARGET = undefined;
+let WRAP = true
+let normalVecWidth = undefined
+let normalVecHeight = undefined
+
+let useTreeComparisons = false
+
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
@@ -43,7 +51,6 @@ let tree = undefined
 function windowResized() {
   noLoop()
   resizeCanvas((windowWidth - PADDING) / ZOOM, (windowHeight - PADDING) / ZOOM - DIVOFFSET)
-  tree.renew()
   loop()
 }
 
@@ -52,13 +59,18 @@ function setup() {
   createCanvas((windowWidth - PADDING) / ZOOM, (windowHeight - PADDING) / ZOOM - DIVOFFSET, P2D);
   tree = new TreeHandler()
   entities = generateEntities(tree, AMOUNT)
+  normalVecWidth = new p5.Vector(width, 0)
+  normalVecHeight = new p5.Vector(0, height)
+  
+
   frameRate(FPS);
-
+  
+  SEEK_TARGET = new p5.Vector(width/2, height/2)
+  
+  
   print("TREECAP: ", TREE_CAP)
-
   div = createDiv();
   div.addClass("mydiv")
-
 
   TREE_DEBUG = createCheckbox('DEBUG Tree', false);
   SHOW_COUNT_DEBUG = createCheckbox('DEBUG COUNT', false);
@@ -77,19 +89,27 @@ function setup() {
 let fr = 0
 let count = 1
 let framectr = 1
+let turnRound = 0;
+
 function draw() {
+  turnRound++;
   comparisions = 0
   framectr++
   fr += frameRate()
+
+  
 
   background(...BACKGROUND_COLOR);
   tree.reClamp()
   tree.update()
   tree.show()
 
+  persistTarget();
+
   if (SHOW_INTERFACE.checked()) {
     showDebug()
   }
+
 }
 
 function showDebug() {
@@ -125,24 +145,24 @@ function generateEntities(tree, AMOUNT) {
 
 class Entity {
   constructor(color, size, posX, posY) {
-    this.maxSpeed = ENTITY_MAX_VELOCITY
+    this.maxSpeed = random(.8, 1) * ENTITY_MAX_VELOCITY
     
-    this.alignForce = ENTITY_ALIGN_FORCE;
-    this.cohenForce = ENTITY_COHEN_FORCE
-    this.separForce = ENTITY_SEPAR_FORCE
+    this.alignForce = random(.8, 1) * ENTITY_ALIGN_FORCE
+    this.cohenForce = random(.8, 1) * ENTITY_COHEN_FORCE
+    this.separForce = random(.8, 1) * ENTITY_SEPAR_FORCE
 
     this.position = new p5.Vector(posX, posY)
-    this.size = size;
+    this.size = random(.8, 1) * size * 2;
     this.color = color;
 
-    this.velocity = p5.Vector.random2D();
-    this.velocity.setMag(random(2, 4));
+    this.velocity = new p5.Vector(random(), random())
+    this.velocity.limit(this.maxSpeed)
     this.acceleration = createVector();
 
     this.nextPosition = undefined
     this.nextVelocity = undefined
 
-    this.dir = new p5.Vector(0, 0)
+    this.dir = new p5.Vector(posX, posY)
   };
 
   update() {
@@ -150,26 +170,36 @@ class Entity {
     this.nextPosition.add(this.position)
     this.nextPosition.add(this.velocity)
 
-
-
     this.nextVelocity = new p5.Vector(0, 0)
     this.nextVelocity.add(this.velocity)
     this.nextVelocity.add(this.acceleration)
-    this.nextVelocity.x += cos(random(-1, 1) * this.size) * .1
-    this.nextVelocity.y += sin(random(-1, 1) * this.size) * .1
     this.nextVelocity.limit(this.maxSpeed)
 
-   
-    this.dir = p5.Vector.sub(this.nextPosition, this.position)
+    
+
+    
+    let newDir = p5.Vector.sub(this.nextPosition, this.position)
+    this.dir.add(newDir)
+    this.dir.div(2)
     this.dir.setMag(this.size)
   
-    realignVector(this.nextPosition)
+
     this.acceleration.mult(0);
-  
   }
 
 
   flip() {
+
+    if (WRAP) {
+      realignVector(this.nextPosition)
+    } else {
+      let preMag = this.nextVelocity.mag()
+      // CALCULATE HOW MUCH THE MAGNITUDE IS SET
+      // CALCULATE THE NEW POSITION BASED ON REFLECT 
+      // RELFECT BASED ON NORMAL 
+    }
+
+
     this.position = this.nextPosition
     this.velocity = this.nextVelocity
   }
@@ -184,20 +214,91 @@ class Entity {
           other,
           ENTITY_DETECTION_RANGE
         );
-        if (d < (ENTITY_DETECTION_RANGE * ENTITY_DETECTION_RANGE)) {
+        if (d <= (ENTITY_DETECTION_RANGE * ENTITY_DETECTION_RANGE)) {
           neigh.add([other, d])
         }
       }
     }
 
+    let alignSteering = new p5.Vector(0,0);
+    let cohesionSteering = createVector();
+    let separationSteering = createVector();
+    let total = boids.size;
+    let totalCohen = 0;
+    let totalSepar = 0;
+    neigh.forEach(e => {
+      alignSteering.add(e[0].velocity)
+      if( e[1] <= (ENTITY_PERSONAL_SPACE * ENTITY_PERSONAL_SPACE )) {
+        cohesionSteering.add(e[0].position)
+        totalCohen++
+        
+        let diff = p5.Vector.sub(this.position, e[0].position);
+        diff.div(e[1]);
+        separationSteering.add(diff);
+        totalSepar++
+      }
+    })
+    if (total > 0) {
+      // console.log(alignSteering)
+      alignSteering.div(total);
+      // // console.log(alignSteering)
+      alignSteering.setMag(this.maxSpeed);
+      // console.log(alignSteering)
+      // console.log(this.velocity)
+      alignSteering.sub(this.velocity)
+      // console.log(alignSteering)
+      // console.log(alignSteering)
+      alignSteering.limit(this.alignForce);
+    }
+
+
+    if (totalCohen > 0) {
+      cohesionSteering.div(totalCohen);
+      cohesionSteering.sub(this.position);
+      cohesionSteering.setMag(this.maxSpeed);
+      cohesionSteering.sub(this.velocity);
+      cohesionSteering.limit(this.cohenForce);
+    }
+
+
+
+    if (totalSepar > 0) {
+      separationSteering.div(totalSepar);
+      separationSteering.setMag(this.maxSpeed);
+      separationSteering.sub(this.velocity);
+      separationSteering.limit(this.separForce);
+    }
+
+    // let alignment   = alignSteering 
+    let cohesion    = cohesionSteering 
+    let separation  = separationSteering 
+
     let alignment   = this.align(neigh);
-    let cohesion    = this.cohesion(neigh);
-    let separation  = this.separation(neigh);
+    // let cohesion    = this.cohesion(neigh);
+    // let separation  = this.separation(neigh);
 
     this.acceleration.add(alignment);
     this.acceleration.add(cohesion);
     this.acceleration.add(separation);
 
+
+  }
+
+  seek(target){
+    let desired = p5.Vector.sub(target, this.position);  // A vector pointing from the position to the target
+    // Scale to maximum speed
+    desired.normalize();
+    desired.mult(2);
+
+    // Above two lines of code below could be condensed with new PVector setMag() method
+    // Not using this method until Processing.js catches up
+    // desired.setMag(maxspeed);
+
+    // Steering = Desired minus Velocity
+    let steer = p5.Vector.sub(desired, this.velocity);
+    steer.limit(.2);  // Limit to maximum steering force
+    
+    this.acceleration.add(steer);
 
   }
 
@@ -226,7 +327,7 @@ class Entity {
     })
 
     if (total > 0) {
-      steering.div(total * sin(total));
+      steering.div(total);
       steering.sub(this.position);
       steering.setMag(this.maxSpeed);
       steering.sub(this.velocity);
@@ -240,7 +341,7 @@ class Entity {
     let total = 0;
     for (let tuple of boids) {
       if( tuple[1] < (ENTITY_PERSONAL_SPACE * ENTITY_PERSONAL_SPACE )) {
-      let diff = p5.Vector.sub(this.position, tuple[0].position);
+        let diff = p5.Vector.sub(this.position, tuple[0].position);
         diff.div(tuple[1]) ;
         steering.add(diff);
         total++
@@ -256,27 +357,17 @@ class Entity {
   }
 
   show() {
-
-
-    // strokeWeight(this.size * 2)
-    // stroke(255, 10, 10, 255)
-    // line(this.position.x, this.position.y, this.position.x - cos(this.dir.heading())*this.size, this.position.y - sin(this.dir.heading())*this.size)
-    
-    // strokeWeight(this.size *1.6)
-    // stroke(255, 255)
-    // line(this.position.x, this.position.y, this.position.x - cos(this.dir.heading())*this.size, this.position.y - sin(this.dir.heading())*this.size)
     push()
     strokeWeight(this.size)
     stroke(this.color)
     point(this.position.x, this.position.y)
-    strokeWeight(.5)
-    stroke(this.color)
-    fill(this.color)
-    translate(this.position)
-    rotate(HALF_PI + this.dir.heading())
-    triangle(-this.size, 0, 0, -this.size*4, this.size, 0)
+    // strokeWeight(.5)
+    // stroke(this.color)
+    // fill(this.color)
+    // translate(this.position)
+    // rotate(HALF_PI + this.dir.heading())
+    // triangle(-this.size, 0, 0, -this.size*4, this.size, 0)
     pop()
-
 
   }
 }
@@ -328,6 +419,8 @@ class Leaf extends Tree {
   flip() {
     this.getValue().flip()
   }
+
+  
 }
 
 
@@ -391,6 +484,18 @@ class Node extends Tree {
     }
   }
 
+  seek(seekTarget) {
+    if (this.split) {
+      this.branches.forEach(e => e.seek(seekTarget))
+    } else {
+      this.leafes.forEach((val) => {
+        val.executeOnLeaf((e) => {
+          e.seek(seekTarget);
+        })
+      })
+    }
+  }
+
 
   flip() {
     if (this.split) {
@@ -417,7 +522,6 @@ class Node extends Tree {
     while (!p.inBoundary(x, y)) {
       p = p.parent
     }
-
     p.add(leaf)
   }
 
@@ -580,7 +684,13 @@ class TreeHandler {
   }
 
   update() {
+    if(SEEK_TARGET) {
+      this.head.seek(SEEK_TARGET);
+    }
+    
+    
     this.head.update(this)
+    
     this.head.flip()
   }
 
@@ -671,14 +781,36 @@ function keyPressed() {
 
 
 let fullScrn = false
-function mouseClicked() {
-  if (0 <= mouseX && mouseX <= width && 0 <= mouseY && mouseY <= height) {
+let END_OF_SEEK = 2;
 
-  } else {
-    // fullScrn = !fullScrn
-    // fullscreen(fullScrn)
+// function mouseClicked() {
+//   if (0 <= mouseX && mouseX <= width && 0 <= mouseY && mouseY <= height) {
+//     SEEK_TARGET = new p5.Vector(mouseX, mouseY)
+//     setTimeout( _ => {
+//       SEEK_TARGET = undefined;
+//     }, 1000 * END_OF_SEEK)
+//   } else {
+//     // fullScrn = !fullScrn
+//     // fullscreen(fullScrn)
+//   }
+// }
+
+function mousePressed(){
+  if (0 <= mouseX && mouseX <= width && 0 <= mouseY && mouseY <= height) {
+    SEEK_TARGET = new p5.Vector(mouseX, mouseY)
   }
 }
+
+function mouseReleased(){
+  SEEK_TARGET = undefined
+}
+
+
+
+function persistTarget() {
+}
+
+
 
 
 function getCoordinates(x, y) {
